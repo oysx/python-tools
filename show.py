@@ -11,6 +11,7 @@ LONG_MAX="268435455"
 
 global_conf={
 	"other":False,
+	"raw":False,
 	}
 
 def shortFloat(val):
@@ -57,8 +58,14 @@ def getBracket(v, orig=False):
 		return v
 
 def packMap(title, line, params, evaluate=False):
+		global global_conf
 		map = params["data"]
 		for i in title[1:]:
+			if global_conf["raw"]:
+				#don't hide the non-changed fields
+				params["result"].update({i:"more"})
+				continue
+			
 			index = title.index(i)
 			if map.get(i):
 				if map[i] == line[index]:
@@ -174,10 +181,14 @@ def top(title, line, origLine):
 
 def B2b(title, line, origLine):
 	for i in ["tc#s_bytes","dev#t_byte","dev#r_byte","Ip#InOctets","Ip#OutOctets"]:
-		index = title.index(i)
-		value = long(line[index])
-		line[index] = str((value*8)/1000000)+"Mbps"
-	
+		try:
+			index = title.index(i)
+			value = long(line[index])
+			line[index] = str((value*8)/1000000)+"Mbps"
+		except ValueError:
+			#bypass non exist fields
+			pass
+		
 def rtt2ms(title, line, origLine):
 	for i in title:
 		if i.startswith("ESTAB#") and i.find(".rtt.")!=-1:
@@ -247,22 +258,22 @@ def checkLogFile(filename):
 	
 	return True
 
-def main(argv):
+def main(filename):
 	global command,global_conf,columnWidths
 
 	#not support multiple results, check it
-	if not checkLogFile(argv[1]):
+	if not checkLogFile(filename):
 		return
 	
 	#pack result
-	goThrough(argv[1], "pack")
+	goThrough(filename, "pack")
 	command["pack"]["reduce"](command["pack"])
 	
 	#filter result
 	dropFilter = ["ct#drop", "ct#early_drop", "tc#dropped", "tc#overlimits", "dev#t_drop", "dev#r_drop", "Tcp#ListenDrops", "Tcp#TCPPrequeueDropped", "Tcp#TCPBacklogDrop", "Tcp#TCPMinTTLDrop", "Tcp#TCPDeferAcceptDrop", "Tcp#TCPReqQFullDrop", "Tcp#TCPOFODrop", "Tcp#TCPSACKDiscard","Ip#InDiscards","Ip#OutDiscards"]
 	errorFilter = ["ct#error","ct#insert_failed","ct#invalid","dev#t_err","dev#r_err","Ip#InCsumErrors","Ip#InTruncatedPkts","Ip#InNoRoutes","Tcp#TCPFastOpenListenOverflow","Tcp#TCPTimeWaitOverflow","Tcp#TCPFastOpenPassiveFail"]
 	tcpFilter = ["Tcp#PassiveOpens", "Tcp#ActiveOpens", "Tcp#CurrEstab", "Tcp#TCPMemoryPressures","Tcp#TCPTimeouts","Tcp#TCPSpuriousRTOs","Tcp#TCPRetransFail","Tcp#BusyPollRxPackets","Tcp#TCPSpuriousRtxHostQueues","Tcp#RetransSegs","Tcp#EstabResets","Tcp#OutRsts"]
-	ssFilter = ["ESTAB#Peer.rtt.eq.avg","ESTAB#Local.rtt.eq.avg","ESTAB#Peer.cwnd.eq.avg","ESTAB#Local.cwnd.eq.avg","ESTAB#Peer.rto.eq.avg","ESTAB#Local.rto.eq.avg","ESTAB#Peer.retrans.eq.avg","ESTAB#Local.retrans.eq.avg","ESTAB#Peer.w.eq.avg", "ESTAB#Local.w.eq.avg","ESTAB#Peer.r.eq.avg","ESTAB#Local.r.eq.avg","ESTAB#Peer.count","ESTAB#Local.count"]
+	ssFilter = ["ESTAB#Peer.rtt.eq.avg","ESTAB#Local.rtt.eq.avg","ESTAB#Peer.cwnd.eq.avg","ESTAB#Local.cwnd.eq.avg","ESTAB#Peer.rto.lt.avg","ESTAB#Peer.rto.gt.avg","ESTAB#Local.rto.lt.avg","ESTAB#Local.rto.gt.avg","ESTAB#Peer.retrans.eq.avg","ESTAB#Local.retrans.eq.avg","ESTAB#Peer.w.eq.avg", "ESTAB#Local.w.eq.avg","ESTAB#Peer.r.eq.avg","ESTAB#Local.r.eq.avg","ESTAB#Peer.count","ESTAB#Local.count"]
 	iptFilter = ["dSYN#pkts","uSYN_ACK#pkts","dSYN_ACK#pkts","uSYN#pkts"]
 	throughputFilter = ["tc#b_bytes","tc#s_bytes","dev#t_byte","dev#r_byte","Ip#OutOctets","Ip#InOctets"]
 	bufferFilter = ["tc#requeues","tc#overlimits","tc#b_pkts"]
@@ -282,15 +293,16 @@ def main(argv):
 	command["rate"]["showFilter"] = result
 	
 	#rate/show result
-	goThrough(argv[1], "rate", evaluate=True)
+	goThrough(filename, "rate", evaluate=True)
 	command["rate"]["first"] = True
 	command["rate"]["result"] =[]
-	goThrough(argv[1], "rate")
+	goThrough(filename, "rate")
 	
 if __name__ == '__main__':
 	try:
-		options, args = getopt.getopt(sys.argv[1:], "o:f:p:i:", ["other", "file", "port", "interface"])
+		options, args = getopt.getopt(sys.argv[1:], "o:f:p:i:r", ["other", "file", "port", "interface", "raw"])
 	except getopt.GetoptError:
+		print "arguments parse error!"
 		sys.exit()
 	
 	for k,v in options:
@@ -302,6 +314,8 @@ if __name__ == '__main__':
 			global_conf["port"] = long(v)
 		if k in ("-i","--interface"):
 			global_conf["intf"] = v
+		if k in ("-r","--raw"):
+			global_conf["raw"] = True
 	
-	main(sys.argv)
+	main(args[0])
 

@@ -186,7 +186,7 @@ class ss_frame(frame):
         
                     #State      addr match          field match iter
         self.conf = (
-                    {"title":"rto", "func":self.funcGt, "params":[], "index":1, "lt":None, "gt":None, "eq":None},
+                    {"title":"rto", "func":self.funcGt, "params":[1000], "index":1, "lt":None, "gt":None, "eq":None},
                     {"title":"cwnd", "func":self.funcGt, "params":[], "index":5, "lt":None, "gt":None, "eq":None},
                     {"title":"t", "func":self.funcGt, "params":[], "index":2, "lt":None, "gt":None, "eq":None},
                     {"title":"w", "func":self.funcGt, "params":[], "index":5, "lt":None, "gt":None, "eq":None},
@@ -304,7 +304,7 @@ class ss_frame(frame):
             #if tbl is None:
             #    continue
             #rec = tbl
-	    rec = self.map.get("ESTAB")
+            rec = self.map.get("ESTAB")
             if record[F_LOCAL].split(":")[1] == global_conf["port"]:
                 rec = rec["Local"]
             elif record[F_PEER].split(":")[1] == global_conf["port"]:
@@ -507,9 +507,16 @@ class table():
         
         self.record_last = record
         
-    def title_output(self):
+    def setup_out_filter(self):
         if self.out_filter is None:
             self.filter_set(self.title)
+        
+        #filter-out non-exist fields
+        self.out_filter = [i for i in self.out_filter if i in self.title]
+        
+    def title_output(self):
+        self.setup_out_filter()
+        
         field_name = [self.name+"#"+n for n in self.out_filter]
         self.out_file.write(" ".join(field_name) + " " + self.border)
         
@@ -518,8 +525,7 @@ class table():
         log_file.write(" ".join(field_name) + " " + self.border)
 
     def record_output(self):
-        if self.out_filter is None:
-            self.filter_set(self.title)
+        self.setup_out_filter()
             
         out = ""
         for i in self.out_filter:
@@ -553,7 +559,7 @@ def init_conf():
              "iptable.dSYN_ACK" : table("dSYN_ACK", title=["pkts","bytes"], out_filter=["pkts"]),
              "iptable.uSYN" : table("uSYN", title=["pkts","bytes"], out_filter=["pkts"]),
              "iptable.uSYN_ACK" : table("uSYN_ACK", title=["pkts","bytes"], out_filter=["pkts"]),
-             "ss.ESTAB" : table("ESTAB", out_filter=["Local.count","Peer.count","Local.cwnd.eq.avg","Peer.cwnd.eq.avg","Local.rto.eq.avg","Peer.rto.eq.avg","Local.w.eq.avg","Peer.w.eq.avg","Local.rtt.eq.avg","Peer.rtt.eq.avg"], delta=False),
+             "ss.ESTAB" : table("ESTAB", out_filter=["Local.count","Peer.count","Local.cwnd.eq.avg","Peer.cwnd.eq.avg","Local.rto.lt.avg","Local.rto.gt.avg","Peer.rto.lt.avg","Local.w.eq.avg","Peer.w.eq.avg","Local.rtt.eq.avg","Peer.rtt.eq.avg"], delta=False),
              "tc" : table("tc", title=["s_bytes","s_pkts","dropped","overlimits","requeues","b_bytes","b_pkts"], out_filter=["dropped"]),
              "dev.Eth" : table("dev", out_filter=["r_drop","t_drop"], title=["r_byte","r_pkt","r_err","r_drop","r_fifo","r_frame","r_comp","r_multi","t_byte","t_pkt","t_err","t_drop","t_fifo","t_colls","t_carr","t_comp"]),
              "conntrack.cpu" : table("ct", out_filter=["drop","early_drop","error","insert_failed","invalid"],),
