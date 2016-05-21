@@ -334,12 +334,14 @@ class ss_frame(frame):
 class conntrack_frame(frame):
     def get(self):
         #_, self.buffer, _ = cmd_exec("conntrack -S")
-        _, self.buffer, _ = cmd_exec("./ctnl.py")
-
+        #_, self.buffer, _ = cmd_exec("./ctnl.py")
+        self.buffer = conntrack()
+        
     def prepare(self):
         #_, buffer, _ = cmd_exec("conntrack -S")
-        _, buffer, _ = cmd_exec("./ctnl.py")
-        buffer = buffer.splitlines()
+        #_, buffer, _ = cmd_exec("./ctnl.py")
+        #buffer = buffer.splitlines()
+        buffer = conntrack()
         if len(buffer) == 0:    #remove conntrack frame if there hasn't this tool
             index=0
             for i in frame_list:
@@ -364,7 +366,7 @@ class conntrack_frame(frame):
                 break
             
     def parse(self):
-        self.buffer = self.buffer.splitlines()
+        #self.buffer = self.buffer.splitlines()
         result = []
         for line in self.buffer:
             mlist = line.split()
@@ -657,6 +659,124 @@ class frames():
     def task(self):
         doAlarm()
         
+'''
+conntrack implemented by python (original content of the file "ctnl.py") and be used instead of linux tools "conntrack"
+'''
+import os
+import socket
+import struct
+
+NLMSG_NOOP = 1
+NLMSG_ERROR = 2
+NLMSG_DONE = 3
+
+NETLINK_NETFILTER=12
+NFNETLINK_V0=0
+
+NFNL_SUBSYS_CTNETLINK=1
+IPCTNL_MSG_CT_GET_STATS_CPU=4
+
+NLM_F_REQUEST=1
+NLM_F_ROOT=0x100
+NLM_F_MATCH=0x200
+NLM_F_DUMP=NLM_F_ROOT|NLM_F_MATCH
+
+class ctnl:
+    MSGLEN=0
+    MSGTYPE=1
+    def __init__(self, next=None):
+        self.length = 4*4
+        self.pattern = "IHHII"
+        self.nlFlags = NLM_F_REQUEST | NLM_F_DUMP
+        self.nlSeq = 7
+        self.nlPid = 0
+        self.next = next
+        self.nlSocket = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_NETFILTER)
+        self.nlSocket.bind((os.getpid(), 0))
+        #print self.nlSocket.getsockname()
+    
+    def send(self, subsys, type, content=None):
+        self.nlType = subsys<<8 | type
+        self.payload = self.next.send(content)
+        self.nlHdr = struct.pack(self.pattern, len(self.payload) + self.length, self.nlType, self.nlFlags, self.nlSeq, self.nlPid)
+        
+        self.nlSocket.send(self.nlHdr + self.payload)
+    
+    def recv(self):
+        output = []
+        while True:
+            data = self.nlSocket.recv(65535)
+            while len(data):
+                nlHdr = struct.unpack(self.pattern, data[:self.length])
+                if nlHdr[ctnl.MSGTYPE]==NLMSG_NOOP:
+                    print "no-op"
+                    continue
+                elif nlHdr[ctnl.MSGTYPE]==NLMSG_ERROR:
+                    errno = -struct.unpack("i", data[self.length:self.length+4])[0]
+                    print os.strerror(errno)
+                    break
+                elif nlHdr[ctnl.MSGTYPE]==NLMSG_DONE:
+                    #print "Done."
+                    return output
+                
+                #print "ctnl:"+str(nlHdr)
+                output.append(self.next.recv(data[self.length:nlHdr[ctnl.MSGLEN]]))
+                data = data[nlHdr[ctnl.MSGLEN]:]
+        
+        return output
+    
+    def loop(self):
+        '''
+        return 'list' of records
+        '''
+        self.send(NFNL_SUBSYS_CTNETLINK, IPCTNL_MSG_CT_GET_STATS_CPU)
+        output = self.recv()
+        #return '\n'.join(output)
+        return output
+            
+class genl:
+    RESID=2
+    def __init__(self, res_id=0, version = 0):
+        self.map = ["cpu=", "searched=", "found=", "new=", "invalid=", "ignore=", "delete=", "delete_list=", "insert=", "insert_failed=", "drop=", "early_drop=", "error=", "search_restart="]
+        self.pattern = "!BBH"
+        self.length = 4
+        self.family = socket.AF_INET
+        self.version = NFNETLINK_V0
+        self.res_id = 0
+    def send(self, content=None):
+        return struct.pack(self.pattern, self.family, self.version, self.res_id)
+
+    def recv(self, data):
+        geHdr = struct.unpack(self.pattern, data[:self.length])
+        #print "genl:"+str(geHdr)
+        #print "cpu"+str(geHdr[genl.RESID])+":"
+        self.res_id = geHdr[genl.RESID]
+        self.attributes = self.parseAttributes(data[self.length:])
+        #print "attributes:"+str(self.attributes)
+        output = "cpu="+str(self.res_id) + "\t" + " ".join([self.map[i]+str(self.attributes[i][0]) for i in range(1,1+len(self.attributes))])
+        #print output
+        return output
+    
+    def parseAttributes(self, data):
+        attrs = {}
+        while len(data):
+            attr_len, attr_type = struct.unpack("HH", data[:4])
+            attrs[attr_type] = struct.unpack("!I", data[4:attr_len])
+            attr_len = ((attr_len + 4 - 1) & ~3)
+            data = data[attr_len:]
+        return attrs
+
+def conntrack():
+    '''
+    return 'list' of records each of which is a line string
+    '''
+    s = ctnl(genl())
+    return s.loop()
+
+'''
+main entry
+'''
+
 #sys.path.insert(0, '/Volumes/case-sensitive/pydevd')
 #import pydevd
 #pydevd.settrace("192.168.2.128", stdoutToServer=False, stderrToServer=False)

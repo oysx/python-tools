@@ -221,6 +221,8 @@ def goThrough(filename, cmd, evaluate=False):
 			line = f.readline()
 			if line == "":
 				break
+			if line == "\n":
+				continue
 			mlist = line.split()
 			if not index:
 				title = mlist
@@ -230,16 +232,35 @@ def goThrough(filename, cmd, evaluate=False):
 					command[cmd]["map"](title, mlist, command[cmd], evaluate)
 			index += 1
 
+def checkLogFile(filename):
+	with open(filename, 'rb') as f:
+		count = 0
+		while 1:
+			line = f.readline()
+			if line == "":
+				break
+			if line.startswith("time"):
+				count += 1
+		if count > 1:
+			print "multiple running results ({0}) found in the log file {1}, currently we can not support it. Pls edit the log file and left only once".format(count, filename)
+			return False
+	
+	return True
+
 def main(argv):
 	global command,global_conf,columnWidths
 
+	#not support multiple results, check it
+	if not checkLogFile(argv[1]):
+		return
+	
 	#pack result
 	goThrough(argv[1], "pack")
 	command["pack"]["reduce"](command["pack"])
 	
 	#filter result
-	dropFilter = ["ct.cpu#drop", "ct.cpu#early_drop", "tc#dropped", "tc#overlimits", "dev#t_drop", "dev#r_drop", "Tcp#ListenDrops", "Tcp#TCPPrequeueDropped", "Tcp#TCPBacklogDrop", "Tcp#TCPMinTTLDrop", "Tcp#TCPDeferAcceptDrop", "Tcp#TCPReqQFullDrop", "Tcp#TCPOFODrop", "Tcp#TCPSACKDiscard","Ip#InDiscards","Ip#OutDiscards"]
-	errorFilter = ["ct.cpu#error","ct.cpu#insert_failed","ct.cpu#invalid","dev#t_err","dev#r_err","Ip#InCsumErrors","Ip#InTruncatedPkts","Ip#InNoRoutes","Tcp#TCPFastOpenListenOverflow","Tcp#TCPTimeWaitOverflow","Tcp#TCPFastOpenPassiveFail"]
+	dropFilter = ["ct#drop", "ct#early_drop", "tc#dropped", "tc#overlimits", "dev#t_drop", "dev#r_drop", "Tcp#ListenDrops", "Tcp#TCPPrequeueDropped", "Tcp#TCPBacklogDrop", "Tcp#TCPMinTTLDrop", "Tcp#TCPDeferAcceptDrop", "Tcp#TCPReqQFullDrop", "Tcp#TCPOFODrop", "Tcp#TCPSACKDiscard","Ip#InDiscards","Ip#OutDiscards"]
+	errorFilter = ["ct#error","ct#insert_failed","ct#invalid","dev#t_err","dev#r_err","Ip#InCsumErrors","Ip#InTruncatedPkts","Ip#InNoRoutes","Tcp#TCPFastOpenListenOverflow","Tcp#TCPTimeWaitOverflow","Tcp#TCPFastOpenPassiveFail"]
 	tcpFilter = ["Tcp#PassiveOpens", "Tcp#ActiveOpens", "Tcp#CurrEstab", "Tcp#TCPMemoryPressures","Tcp#TCPTimeouts","Tcp#TCPSpuriousRTOs","Tcp#TCPRetransFail","Tcp#BusyPollRxPackets","Tcp#TCPSpuriousRtxHostQueues","Tcp#RetransSegs","Tcp#EstabResets","Tcp#OutRsts"]
 	ssFilter = ["ESTAB#Peer.rtt.eq.avg","ESTAB#Local.rtt.eq.avg","ESTAB#Peer.cwnd.eq.avg","ESTAB#Local.cwnd.eq.avg","ESTAB#Peer.rto.eq.avg","ESTAB#Local.rto.eq.avg","ESTAB#Peer.retrans.eq.avg","ESTAB#Local.retrans.eq.avg","ESTAB#Peer.w.eq.avg", "ESTAB#Local.w.eq.avg","ESTAB#Peer.r.eq.avg","ESTAB#Local.r.eq.avg","ESTAB#Peer.count","ESTAB#Local.count"]
 	iptFilter = ["dSYN#pkts","uSYN_ACK#pkts","dSYN_ACK#pkts","uSYN#pkts"]
@@ -249,7 +270,7 @@ def main(argv):
 	
 	allFilter = dropFilter+errorFilter+tcpFilter+ssFilter+iptFilter+throughputFilter+bufferFilter+topFilter
 	showFilter = dropFilter+errorFilter+bufferFilter  +throughputFilter+topFilter+ssFilter+iptFilter
-	print command["pack"]["result"]
+	#print command["pack"]["result"]
 	result = [i for i in showFilter if i in command["pack"]["result"]]
 	otherFilter = [i for i in command["pack"]["result"] if i not in allFilter]
 
