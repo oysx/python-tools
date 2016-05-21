@@ -570,6 +570,23 @@ def init_conf():
               ss_frame("ss"),
               ]
 
+    #remove unnecessary frame in frame_list through table_map
+    _frame_list = []
+    for f in frame_list:
+        found = False
+        for t in table_map.keys():
+            t = t.split('.')[0]
+            if t == f.name:
+                found = True
+                break
+        
+        if found:
+            _frame_list.append(f)
+        else:
+            print "remove frame[{0}]".format(f.name)
+    
+    frame_list = _frame_list
+            
 def doAlarm():
     global global_conf
     exe_async("date >> /var/log/ss.log; ss -4tnmi state established '( sport = :{0} )' >> /var/log/ss.log".format(global_conf["port"]))
