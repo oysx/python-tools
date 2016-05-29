@@ -434,9 +434,9 @@ class iptable_frame(frame):
     def init(self):
         self.conf = [
                  #tbl     setup_cmd                                                                                                         Chain        match_key
-                 ("dSYN", "iptables -t filter -A INPUT  -p tcp -m tcp --dport {0} --tcp-flags SYN SYN".format(global_conf["port"]),         "INPUT",     "dpt:{0} flags:0x02/0x02".format(global_conf["port"])),
+                 ("dSYN", "iptables -t filter -A INPUT  -p tcp -m tcp --dport {0} --tcp-flags SYN,ACK SYN".format(global_conf["port"]),         "INPUT",     "dpt:{0} flags:0x02/0x02".format(global_conf["port"])),
              ("dSYN_ACK", "iptables -t filter -A OUTPUT -p tcp -m tcp --sport {0} --tcp-flags SYN,ACK SYN,ACK".format(global_conf["port"]), "OUTPUT",    "spt:{0} flags:0x12/0x12".format(global_conf["port"])),
-                 ("uSYN", "iptables -t filter -A OUTPUT -p tcp -m tcp --dport {0} --tcp-flags SYN SYN".format(global_conf["port"]),         "OUTPUT",    "dpt:{0} flags:0x02/0x02".format(global_conf["port"])),
+                 ("uSYN", "iptables -t filter -A OUTPUT -p tcp -m tcp --dport {0} --tcp-flags SYN,ACK SYN".format(global_conf["port"]),         "OUTPUT",    "dpt:{0} flags:0x02/0x02".format(global_conf["port"])),
              ("uSYN_ACK", "iptables -t filter -A INPUT  -p tcp -m tcp --sport {0} --tcp-flags SYN,ACK SYN,ACK".format(global_conf["port"]), "INPUT",     "spt:{0} flags:0x12/0x12".format(global_conf["port"])),
                  ]
     
