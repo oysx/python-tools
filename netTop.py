@@ -600,6 +600,18 @@ def doAlarm():
 def show_backtrace():    
     traceback.print_exc()
 
+def iter(mylist, callback):
+    count = len(mylist)
+    i = 0
+    while i < count:
+        f = mylist[i]
+        callback(f)
+        i+=1
+        if len(mylist) < count:
+            # indicate this frame del itself from list
+            i-=1
+            count-=1
+
 class frames():    
     def __init__(self):
         self.alarm = 0
@@ -614,8 +626,10 @@ class frames():
             pass#self.log_file.write("\n==>start at (per {0} second) [{1}]\n".format(self.delta, time.asctime()))
         
     def prepare(self):
-        for f in frame_list:
-            f.prepare()
+        # use this iterator to handle deleting element correctly
+        iter(frame_list, lambda f: f.prepare())
+#         for f in frame_list:
+#             f.prepare()
     
     def cleanup(self):
         for f in frame_list:
