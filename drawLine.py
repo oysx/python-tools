@@ -73,6 +73,8 @@ def getDeltaValue(group, field):
         else:
             result += [float(cur[field] - prev[field])]
         prev = cur
+    # print group
+    # print result
     return result
 
 def prepareTimeStamp(group):
@@ -169,11 +171,10 @@ def MathOutlierDetectorByMedian(signal, threshold = 3):
 def fft(data, sample_period, power=False, use_db=True):
     dt = sample_period
     sp = np.fft.rfft(data)
-    
     if power:
         spectrum = (np.abs(sp) * 2 * dt) ** 2
     else: 
-        spectrum = np.abs(sp) * 2 * dt
+        spectrum = np.abs(sp)# * 2 * dt
         
     if use_db:
         max_input = np.max(data)
@@ -183,7 +184,6 @@ def fft(data, sample_period, power=False, use_db=True):
             spectrum = 10 * np.log10(spectrum / max_input)
     n = len(data)
     freqs = np.fft.fftfreq(n, sample_period)
-    
     # Ignore the negative part of frequency. It's because of symmetry of FFT.
     idx = np.argsort(freqs)
     idx = filter(lambda i: freqs[i] > 0, idx)
@@ -233,8 +233,14 @@ def shortMovementDetector(data, threshold):
     y = max(y) - min(y)
     return math.sqrt(x*x + y*y) / threshold
 
+def shortCountSkip(data):
+    return len(data) <= 3
+    
 def splitData(data):
-    return [data]
+    if shortCountSkip(data):
+        return []
+
+    # return [data]
     result = []
     outlier = MathOutlierDetectorByMedian(getDeltaValue(data, "t"), 30)
     if len(outlier) > 0:
@@ -242,6 +248,7 @@ def splitData(data):
         for i in outlier+[len(data)]:
             seg = data[prev:i]
             if len(seg) < 3:
+                prev = i
                 print "too short segment: " + str(prev) + ":" + str(i)
                 continue
             result.append(seg)
@@ -267,16 +274,15 @@ def prepareData(data):
     for i in data:
         i["y"] = -i["y"]
 
-    return data
+    return data, {"shortRatio": shortRatio}
 
-def drawOne(content, dataHandler, paintHandler, paintPara="", signal=None, showFrequency=None, objFreq=None):
+def drawOne(content, dataHandler, paintHandler, paintPara="", signal=None, showFrequency=None, objFreq=None, meta=None):
     data = dataHandler(content)
 
     x = []
     y = []
     ix = 0
     iy = 0
-    print "---------------------"
     for entry in data:
         # print entry
         
@@ -292,6 +298,8 @@ def drawOne(content, dataHandler, paintHandler, paintPara="", signal=None, showF
     fp = None
     if showFrequency:
         fp = objFreq.calculate([i[paintPara] for i in data])
+        fpMaxI, fpMaxE = fp.maximum()
+        meta["fpMaxIdx"] = fpMaxI
 
     p = signal.calculate({
         "pixel.x": x,
@@ -300,17 +308,18 @@ def drawOne(content, dataHandler, paintHandler, paintPara="", signal=None, showF
         "x_axis_label": namex,
         "y_axis_label": namey,
         "outlier": outlier,
-        "varietyRadio": varietyRadio,
     })
 
+    meta["varietyRadio"] = varietyRadio
     obj = {
         "frequency": fp,
         "signal": p,
+        "meta": meta
     }
 
     return obj
 
-def drawRow(content, config, signal, freq):
+def drawRow(content, config, signal, freq, meta):
     row = []
     for cfg in config:
         dataHandler = cfg[0]
@@ -318,7 +327,7 @@ def drawRow(content, config, signal, freq):
         paintPara = cfg[2]
         showFrequency = cfg[3] if len(cfg)>=4 else None
 
-        row.append(drawOne(content, dataHandler, paintHandler, paintPara, signal, showFrequency, freq))
+        row.append(drawOne(content, dataHandler, paintHandler, paintPara, signal, showFrequency, freq, meta))
     return row
 
 class classAggregation:
@@ -344,6 +353,34 @@ class classAggregation:
             # p.line(entry["pixel.x"], entry["pixel.y"], line_width=2)
             p.circle(entry["pixel.x"], entry["pixel.y"], size=8)
             result += [p]
+        return Row(children=result)
+
+class classVarCollection:
+    def __init__(self):
+        self.data = []
+
+    def calculate(self, index, entry):
+        if len(self.data) <= index:
+            allfields = {}
+            for field in entry:
+                allfields[field] = [entry.get(field)]
+            self.data.append(allfields)
+        else:
+            for field in entry:
+                self.data[index][field] += [entry.get(field)]
+
+    def draw(self):
+        result = []
+        threshold = {"varietyRadio": 0.77, "shortRatio": 1, "fpMaxIdx": 2}
+        for entry in self.data:
+            column = []
+            for field in entry:
+                p = figure()
+                p.circle(range(len(entry[field])), entry[field], size=4, color="blue")
+                p.line(range(len(entry[field])), entry[field], line_width=2, legend=field)
+                p.line([0,len(entry[field])], threshold[field], legend=str(threshold[field]), color="red", line_dash="dashed")
+                column += [p]
+            result += [Column(children=column)]
         return Row(children=result)
 
 class classMinMax:
@@ -383,17 +420,42 @@ class classSignalChart(object):
     def get(self, key):
         return self.data[key]
 
-    def draw(self, index):
+    def maximum(self):
+        maxe = None
+        maxi = None
+        for i in range(len(self.data["pixel.x"])):
+            if maxe==None or self.data["pixel.y"][i] > maxe:
+                maxe = self.data["pixel.y"][i]
+                maxi = i
+        return maxi, maxe
+
+    def tag(self, target, string):
+        target.line([],[], legend=string)
+
+    def draw(self, index, meta):
+        x_axis_label=self.data["x_axis_label"]
+        y_axis_label=self.data["y_axis_label"]
+        x_range = self.objMinMax.get("pixel.x", index)
+        y_range = self.objMinMax.get("pixel.y", index)
+
+        if x_axis_label == "x" and y_axis_label == "y":
+            # for XYPoint show
+            mm = classMinMax([],0)
+            mm.minmax(x_range, y_range)
+            y_range = x_range
+
         p = figure(title=self.data["title"],
-            x_axis_label=self.data["x_axis_label"], y_axis_label=self.data["y_axis_label"],
-            x_range=self.objMinMax.get("pixel.x", index), y_range=self.objMinMax.get("pixel.y", index)
+            x_axis_label=x_axis_label, y_axis_label=y_axis_label, x_range=x_range,y_range=y_range
             )
-        p.line(self.data["pixel.x"], self.data["pixel.y"], line_width=2, legend=str(self.data["varietyRadio"]))
+        p.line(self.data["pixel.x"], self.data["pixel.y"], line_width=2)
         p.circle(self.data["pixel.x"], self.data["pixel.y"], size=8)
 
-        # print "outlier: " + str(self.data["outlier"])
         outlier = self.data["outlier"]
         p.circle([self.data["pixel.x"][i] for i in outlier], [self.data["pixel.y"][i] for i in outlier], size=16, color="red")
+
+        self.tag(p, "varietyRadio: "+str(meta["varietyRadio"]))
+        if meta != None:
+            self.tag(p, "shortRatio: "+str(meta["shortRatio"]))
 
         return p
 
@@ -405,18 +467,18 @@ class classFrequencyChart(classSignalChart):
         new = super(classFrequencyChart, self).calculate(data)
 
         freqs, spectrum = fft(data, len(data), use_db=False)
-        # print len(freqs),len(spectrum)
         new.data = {"pixel.x": freqs, "pixel.y": spectrum}
 
         return new
 
-    def draw(self, index):
+    def draw(self, index, meta):
         p = figure(width=800, height=300, title="FFT",
             x_axis_label="Frequency(Hz)", y_axis_label="Amplitude",
             x_range=self.objMinMax.get("pixel.x", index), y_range=self.objMinMax.get("pixel.y", index)
             )
         # p.line(self.data["pixel.x"], self.data["pixel.y"], legend="data", line_width=2, color="blue")
-        p.vbar(x=self.data["pixel.x"], top=self.data["pixel.y"], color="blue", width=0.0002)
+        tmp = getDeltaValue([ {"x": i}for i in self.data["pixel.x"]], "x")
+        p.vbar(x=self.data["pixel.x"], top=self.data["pixel.y"], color="blue", width=min(tmp))#width=0.0002)
 
         return p
 
@@ -426,6 +488,7 @@ def drawChart(lines, begin, count, config):
     freq = classFrequencyChart(classMinMax(["pixel.x", "pixel.y"], len(config)))
     signal = classSignalChart(classMinMax(["pixel.x", "pixel.y"], len(config)))
     aggr = classAggregation()
+    varCollection = classVarCollection()
 
     for content in lines:
         if cur < begin:
@@ -439,9 +502,13 @@ def drawChart(lines, begin, count, config):
 
         segments = splitData(data)
         for data in segments:
-            data = prepareData(data)
-
-            row = drawRow(data, config, signal, freq)
+            print "---------------------"
+            data, meta = prepareData(data)
+            if meta["shortRatio"] < 1.0:
+                print "skip short movements: "+str(meta["shortRatio"])
+                continue
+            
+            row = drawRow(data, config, signal, freq, meta)
             for i in range(len(row)):
                 row[i]["signal"].minmax(i)
 
@@ -456,16 +523,18 @@ def drawChart(lines, begin, count, config):
         for row in range(len(column[col])):
             entry = column[col][row]
 
-            p = entry["signal"].draw(row)
-            p = p if not entry["frequency"] else Column(children=[p,entry["frequency"].draw(row)])
+            p = entry["signal"].draw(row, entry["meta"])
+            p = p if not entry["frequency"] else Column(children=[p,entry["frequency"].draw(row, entry["meta"])])
 
             figureRow.append(p)
 
             aggr.calculate(row, entry["signal"])
+            varCollection.calculate(row, entry["meta"])
 
         figureColumn.append(Row(children=figureRow))
 
     figureColumn.append(aggr.draw())
+    figureColumn.append(varCollection.draw())
 
     chart = Column(children=figureColumn)
     output_file(sys.argv[1]+".html")
@@ -474,7 +543,7 @@ def drawChart(lines, begin, count, config):
 config = [
 ##### first level
     [getPointRecords, drawXYPoint, "+"],
-    # [getPointRecords, drawWaveAt, "t"],
+    [getPointRecords, drawWaveAt, "t"],
 
 ##### second level
     # [getVelocityRecords, drawORPoint, ""],
@@ -483,7 +552,7 @@ config = [
 
 ##### third level
     # [getVelocityRateRecords, drawWaveAt, "theta", True],
-    [getVelocityRateRecords, drawWaveAt, "distance", True],
+    # [getVelocityRateRecords, drawWaveAt, "distance", True],
 
     # [getAccelerationRecords, drawORPoint, ""],
     # [getAccelerationRecords, drawWaveAt, "theta", True],
@@ -496,7 +565,7 @@ config = [
     # [calculateAcceleration, drawWaveDt, "t"],
 ]
 
-drawChart(lines, 0, 10, config)
+drawChart(lines, 0, 100, config)
 
 ####### data analysis #######
 
