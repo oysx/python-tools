@@ -240,7 +240,7 @@ def splitData(data):
     if shortCountSkip(data):
         return []
 
-    # return [data]
+    return [data]
     result = []
     outlier = MathOutlierDetectorByMedian(getDeltaValue(data, "t"), 30)
     if len(outlier) > 0:
