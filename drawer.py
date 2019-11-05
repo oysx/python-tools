@@ -16,23 +16,23 @@ def doMap(data, maps=None):
         return maps[data]
 
     result = -1
-    if data == "/txnRead01.do":
+    if data == "/ak1.php":
         result = 1
-    elif data == "/txnRead02.ajax":
+    elif data == "/ak2.php":
         result = 2
-    elif data == "/tmrpToken.token":
+    elif data == "/tt.ajax":
         result = 3
-    elif data == "/txnDetail.do":
+    elif data == "/detail.php":
         result = 4
-    elif data == "/txnDetail2.do":
+    elif data == "/detail2.php":
         result = 5
-    elif data == "/txnT01.do":
+    elif data == "/trans1.php":
         result = 6
-    elif data == "/txnNotice01.ajax":
+    elif data == "/t2.ajax":
         result = 7
-    elif data == "/txnS02.do":
+    elif data == "/trans2.php":
         result = 8
-    elif data == "/tmrp/json/queryType_zh_CN.json":
+    elif data == "/query.json":
         result = 9
     elif data == "/":
         result = 10
@@ -133,7 +133,7 @@ class requestEntity(object):
 class pathEntity(requestEntity):
     def __init__(self, data):
         super(pathEntity, self).__init__(data, "path")
-        self.initiator = ["/txnRead01.do", "/txnDetail.do", "/txnT01.do", "/txnS01.do"]
+        self.initiator = ["/ak1.php", "/detail.php", "/trans1.php", "/trans2.php"]
         self.others = [""]
         self.finder = referSearch()
 
@@ -243,7 +243,7 @@ def drawChart(lines, maps):
         data = json.loads(content)
         if data.get("result"):
             data = data["result"]
-        # if data.get("manual_rule_id"):
+        # if data.get("id"):
         #     x += [data["timestamp"]]
         #     y += [1]
         if data.get("path"):
@@ -251,17 +251,17 @@ def drawChart(lines, maps):
                 timebase = long(data["timestamp"])
             x += [(long(data["timestamp"])-timebase)/1000]
             y += [doMap(data["path"], maps)]
-            # if data["cookie_id_cur"]=="347_188995515619362":
+            # if data["cookie"]=="188995515619362":
             #     y1 += [doMap(data["path"], maps)]
             # else:
             #     y1 += [0]
-            # if data["cookie_id_cur"]=="347_195764856981744":
+            # if data["cookie"]=="195764856981744":
             #     y2 += [doMap(data["path"], maps)]
             # else:
             #     y2 += [0]
-            y1 += [7 if data.get("manual_rule_id")=="9999" else 0]
-            y2 += [8 if data.get("manual_rule_id")=="1000" else 0]
-            y3 += [9 if data.get("manual_rule_id")=="8822" else 0]
+            y1 += [7 if data.get("id")=="9999" else 0]
+            y2 += [8 if data.get("id")=="1000" else 0]
+            y3 += [9 if data.get("id")=="8822" else 0]
 
     drawFreq(y)
 
@@ -277,8 +277,8 @@ def drawChart(lines, maps):
     show(p)
 
 def findPure9999(lines):
-    result = {"func": countField, "para": {"field": "manual_rule_id"},}
-    ids=uniqField(lines, "cookie_id_steady", {"mobile_pad": "true"}, result)
+    result = {"func": countField, "para": {"field": "id"},}
+    ids=uniqField(lines, "cookieUniq", {"mobile": "true"}, result)
     print len(ids)
     data = result.get("result")
     for k in data:
@@ -301,9 +301,9 @@ def findReferer(lines):
     for entity in result:
         # if entity.type == "initiator":
         if entity.follower and len(entity.follower) > 0:
-            print entity.data.get(entity.key), ":", entity.data.get("cookie_id_cur")
+            print entity.data.get(entity.key), ":", entity.data.get("cookie")
             for i in entity.follower:
-                print "\t>>>", i, ": ", entity.follower[i].data.get("cookie_id_cur")
+                print "\t>>>", i, ": ", entity.follower[i].data.get("cookie")
 
 def getRecords(lines):
     result = []

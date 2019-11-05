@@ -10,19 +10,19 @@ import pandas as pd
 from sklearn.cluster import SpectralClustering
 from sklearn.cluster import Birch
 
-features = ["input_analyze_captcha_browserPower",
-            "input_analyze_captcha_freqMaxIdx",
-            # "input_analyze_captcha_guid",
-            "input_analyze_captcha_recordCount",
-            "input_analyze_captcha_segmentCount",
-            "input_analyze_captcha_shortRatio",
-            "input_analyze_captcha_varietyRatio",
-            "input_analyze_captcha_verify_id",
-            "manual_rule_id",
-            "event_click_count",
-            "time_on_page",
-            "ua_os",
-            "ua_browser",
+features = ["captcha_browserPower",
+            "captcha_freqMaxIdx",
+            # "captcha_guid",
+            "captcha_recordCount",
+            "captcha_segmentCount",
+            "captcha_shortRatio",
+            "captcha_varietyRatio",
+            "captcha_verify_id",
+            "id",
+            "clickCount",
+            "duration",
+            "os",
+            "browser",
             "status",
             "path"]
 scaler = preprocessing.StandardScaler()
