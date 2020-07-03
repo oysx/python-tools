@@ -52,11 +52,12 @@ test()
 
 # The result is:
 '''
-('--In MetaClass.new', <class '__main__.MetaClass'>, ('TestClass', (), {'__call__': <function __call__ at 0x0000000003B499E8>, '__module__': '__main__', '__metaclass__': <class '__main__.MetaClass'>, '__new__': <function __new__ at 0x0000000003B49908>, '__init__': <function __init__ at 0x0000000003B49978>}), {})
-('--In MetaClass.init', <class '__main__.TestClass'>, ('TestClass', (), {'__call__': <function __call__ at 0x0000000003B499E8>, '__module__': '__main__', '__metaclass__': <class '__main__.MetaClass'>, '__new__': <function __new__ at 0x0000000003B49908>, '__init__': <function __init__ at 0x0000000003B49978>}), {})
+('--In MetaClass.new', <class '__main__.MetaClass'>, ('TestClass', (), {'__call__': <function __call__ at 0x00000000035B4978>, '__module__': '__main__', '__metaclass__': <class '__main__.MetaClass'>, '__new__': <function __new__ at 0x00000000035B4898>, '__init__': <function __init__ at 0x00000000035B4908>}), {})
+('--In MetaClass.init', <class '__main__.TestClass'>, ('TestClass', (), {'__call__': <function __call__ at 0x00000000035B4978>, '__module__': '__main__', '__metaclass__': <class '__main__.MetaClass'>, '__new__': <function __new__ at 0x00000000035B4898>, '__init__': <function __init__ at 0x00000000035B4908>}), {})
+*******
 ('--In MetaClass.call', <class '__main__.TestClass'>, (), {})
 ('---In Test.new', <class '__main__.TestClass'>, (), {})
-('---In Test.init', <__main__.TestClass object at 0x0000000003CFCC48>, (), {})
+('---In Test.init', <__main__.TestClass object at 0x000000000376CD08>, (), {})
 *******
-('--In Test.call', <__main__.TestClass object at 0x0000000003CFCC48>, (), {})
+('--In Test.call', <__main__.TestClass object at 0x000000000376CD08>, (), {})
 '''
