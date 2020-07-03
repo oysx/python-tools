@@ -45,6 +45,7 @@ class TestClass:
         print("-".center(len(inspect.stack()), "-")+"In Test.call", self, args, kwargs)
 
 
+print("*******")
 test = TestClass()
 print("*******")
 test()
