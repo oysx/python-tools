@@ -1,63 +1,21 @@
-# class A:
-#     mm = 10
-#
-# a = A()
-# print(a.mm==A.mm)
-# b = A()
-# print(b.mm==A.mm)
-# a.mm = 20
-# print(a.mm==A.mm)
-# print(b.mm==A.mm)
-#
-# print(type(10))
-import inspect
+class A:
+    mm = 10
 
 
-class MetaClass(type):
-    def __new__(mcs, *args, **kwargs):
-        # mcs means metaclass
-        # args: (class_name, (base_classes_tuple), {namespace_dict})
-        print("-".center(len(inspect.stack()), "-")+"In MetaClass.new", mcs, args, kwargs)
-        return super(MetaClass, mcs).__new__(mcs, *args, **kwargs)
+a = A()
+print(a.mm==A.mm)
+b = A()
+print(b.mm==A.mm)
+a.mm = 20
+print(a.mm==A.mm)
+print(b.mm==A.mm)
 
-    def __init__(cls, *args, **kwargs):
-        # args: (class_name, (base_classes_tuple), {namespace_dict})
-        print("-".center(len(inspect.stack()), "-")+"In MetaClass.init", cls, args, kwargs)
-        return super(MetaClass, cls).__init__(*args, **kwargs)
+print(type(10))
 
-    def __call__(cls, *args, **kwargs):
-        print("-".center(len(inspect.stack()), "-")+"In MetaClass.call", cls, args, kwargs)
-        return super(MetaClass, cls).__call__(*args, **kwargs)
-
-
-class TestClass:
-    __metaclass__ = MetaClass
-
-    def __new__(cls, *args, **kwargs):
-        print("-".center(len(inspect.stack()), "-")+"In Test.new", cls, args, kwargs)
-        return super(TestClass, cls).__new__(cls, *args, **kwargs)
-
-    def __init__(self, *args, **kwargs):
-        print("-".center(len(inspect.stack()), "-")+"In Test.init", self, args, kwargs)
-        return super(TestClass, self).__init__(*args, **kwargs)
-
-    def __call__(self, *args, **kwargs):
-        print("-".center(len(inspect.stack()), "-")+"In Test.call", self, args, kwargs)
-
-
-print("*******")
-test = TestClass()
-print("*******")
-test()
-
-# The result is:
-'''
-('--In MetaClass.new', <class '__main__.MetaClass'>, ('TestClass', (), {'__call__': <function __call__ at 0x00000000035B4978>, '__module__': '__main__', '__metaclass__': <class '__main__.MetaClass'>, '__new__': <function __new__ at 0x00000000035B4898>, '__init__': <function __init__ at 0x00000000035B4908>}), {})
-('--In MetaClass.init', <class '__main__.TestClass'>, ('TestClass', (), {'__call__': <function __call__ at 0x00000000035B4978>, '__module__': '__main__', '__metaclass__': <class '__main__.MetaClass'>, '__new__': <function __new__ at 0x00000000035B4898>, '__init__': <function __init__ at 0x00000000035B4908>}), {})
-*******
-('--In MetaClass.call', <class '__main__.TestClass'>, (), {})
-('---In Test.new', <class '__main__.TestClass'>, (), {})
-('---In Test.init', <__main__.TestClass object at 0x000000000376CD08>, (), {})
-*******
-('--In Test.call', <__main__.TestClass object at 0x000000000376CD08>, (), {})
+'''Result:
+True
+True
+False
+True
+<type 'int'>
 '''
