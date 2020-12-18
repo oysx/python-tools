@@ -186,8 +186,8 @@ def docker_search(docker):
 def docker_walk(docker):
     global g_params
     out = docker.layer_list()
-    for layer in out:
-        print("-".center(20, "-"))
+    for index, layer in enumerate(out):
+        print("[{}]".format(index) + "-".center(20, "-"))
         try:
             cmd = g_params.format(layer)
             # print("command: {}".format(cmd))
@@ -195,6 +195,45 @@ def docker_walk(docker):
             print(output)
         except:
             pass
+
+class ViPath(object):
+    def __getattr__(self, item):
+        func = getattr(os.path, item)
+        return func
+
+    @staticmethod
+    def join(path, *paths):
+        new_paths = []
+        for p in paths:
+            new_paths += [p.strip(os.path.sep)]
+        return getattr(os.path, 'join')(path, *new_paths)
+
+vipath = ViPath()
+
+def docker_raw(docker):
+    global g_params
+    path = g_params
+    out = docker.layer_list()
+    outer_path = None
+    for index, layer in enumerate(out):
+        if os.path.exists(vipath.join(layer, path)):
+            inner_path = vipath.dirname(path)
+            outer_path = vipath.join(layer, inner_path)
+            print("Found {} in [{}]:{}".format(path, index, outer_path))
+            break
+
+    if not outer_path:
+        print("Can't find %s" % path)
+        sys.exit()
+
+    cmd = "docker run -dt --rm --entrypoint='' -v {outer_path}:{inner_path} {id} /bin/bash".format(
+        outer_path=outer_path,
+        inner_path=inner_path,
+        id=docker.name)
+    print("Run command: %s" % cmd)
+    out = subprocess.check_output(cmd, shell=True)
+    print("Started container: %s" % out)
+
 
 def docker_diff(docker):
     global g_params
@@ -224,6 +263,21 @@ def docker_diff(docker):
 
         print(show)
 
+def help():
+    print("Usage: [options] <docker ID or name>")
+    "help", "raw", "extract", "tar", "walk", "list", "diff", "search"
+    print("\t-h\t:help")
+    print("\t-r <path>\t:'path' is absolute path in the container. We find the upmost layer contain it and mount it into"
+          "container to modify it's content directly skipping overlay filesystem")
+    print("\t-x <layer index>\t:'layer index' is the numeric number of the image's layer which we want to strip from the image")
+    print("\t-t\t:Save the image into tar file and show each layer's ID and command")
+    print("\t-w <command>\t:Iterate each layer and execute the <command> on the layer's path. You can use '{}' stands for this path")
+    print("\t-l\t:List all layers ID")
+    print("\t-d <another image/container ID>\t:Compare two images/containers layers, for same layer with '*' prefix indicator")
+    print("\t-s <pattern>\t:Search <pattern> on each layer")
+
+    sys.exit()
+
 '''
 Example:
 # fo findout all "trusted.overlay.opaque" xattribute directories which is another whiteout mechanism for directories in overlay2 filesystem
@@ -237,28 +291,34 @@ if __name__ == "__main__":
         sys.exit()
 
     try:
-        options, args = getopt.getopt(sys.argv[1:], "x:tw:ld:s:", ["extract", "tar", "walk", "list", "diff", "search"])
+        options, args = getopt.getopt(sys.argv[1:], "hr:x:tw:ld:s:", ["help", "raw", "extract", "tar", "walk", "list", "diff", "search"])
     except getopt.GetoptError:
         sys.exit()
 
     for k, v in options:
         if k in ("-l", "--list"):
             opcode = docker_list
-        if k in ("-w", "--walk"):
+        elif k in ("-w", "--walk"):
             opcode = docker_walk
             g_params = v
-        if k in ("-d", "--diff"):
+        elif k in ("-d", "--diff"):
             opcode = docker_diff
             g_params = v
-        if k in ("-s", "--search"):
+        elif k in ("-s", "--search"):
             opcode = docker_search
             g_params = v
-        if k in ("-t", "--tar"):
+        elif k in ("-t", "--tar"):
             opcode = docker_tar
-        if k in ("-x", "--extract"):
+        elif k in ("-x", "--extract"):
             opcode = docker_extract
             g_params = v
-
-
+        elif k in ("-r", "--raw"):
+            opcode = docker_raw
+            g_params = v
+        elif k in ("-h", "--help"):
+            help()
+        else:
+            help()
+            
     docker = Docker(args[0])
     opcode(docker)
