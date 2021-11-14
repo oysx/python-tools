@@ -20,6 +20,7 @@ class base(object):
 
 class module(base):
     def __init__(self):
+        self.__dict__["name"] = "vv"
         self.i = 1
 
     def checkpoint(self):
@@ -30,20 +31,22 @@ class module(base):
 
     @property
     def name(self):
+        self.__dict__["name"] = "vv"
         return self.__class__.__name__
 
 
 
 class snapshot(object):
     def __init__(self, proxy):
+        # self.__dict__["name"] = 1
         # proxy the input object
         self.proxy = proxy
 
         # lookup all "property" decorated attributes and create corresponding attributes in this object
-        for k in dir(self.proxy):
-            if isinstance(getattr(self.proxy.__class__, k, None), property):
-                print("Proxy: {}".format(k))
-                setattr(self, k, None)  # add placeholder
+        # for k in dir(self.proxy):
+        #     if isinstance(getattr(self.proxy.__class__, k, None), property):
+        #         print("Proxy: {}".format(k))
+        #         setattr(self, k, None)  # add placeholder
 
     def __enter__(self):
         # iterate all local variables in the caller frame and find out whose value is the original module object
@@ -78,6 +81,10 @@ class snapshot(object):
 
 b =c= module()
 a=b
+print(b.name)
+print(b.name)
+print(b.name)
+
 # object "b" is instance of "module"
 with b.checkpoint():
     # object "b" is changed to instance of "snapshot"
