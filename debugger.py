@@ -26,8 +26,12 @@ class Debugger(object):
             # Don't trace in this scope
             return None
 
-        self.space += self.GAP
+        if event == 'call':
+            self.space += self.GAP
+
         self.on_call(frame, event, arg)
+        if event == 'return':
+            self.space -= self.GAP
         return self.trace_line
 
     def is_concerned(self, frame):
@@ -83,7 +87,8 @@ class Debugger(object):
 
     @staticmethod
     def scope_class(frame):
-        return "__name__" in frame.f_code.co_names
+        # return "__name__" in frame.f_code.co_names
+        return "__module__" in frame.f_code.co_names
 
 
 class DebugClass(Debugger):
@@ -92,6 +97,8 @@ class DebugClass(Debugger):
 
     def on_call_class(self, frame, event, arg):
         self.show_content(frame, event, arg)
+        # print(frame.f_code.co_names)
+
         if event == 'return':
             self.hijack(arg)
 
@@ -146,10 +153,17 @@ class DebugFunction(Debugger):
 class DebugEverythink(Debugger):
     def trace_line(self, frame, event, arg):
         self.show_common(frame, event, arg)
+        if event == 'return':
+            self.space -= self.GAP
         return self.trace_line
 
     def trace_dispatch(self, frame, event, arg):
+        if event == 'call':
+            self.space += self.GAP
+            print(frame.f_code.co_names)
         self.show_common(frame, event, arg)
+        if event == 'return':
+            self.space -= self.GAP
         return self.trace_line
 
 
@@ -166,7 +180,7 @@ def main():
     del sys.argv[0]
     sys.path[0] = os.path.dirname(mainpyfile)
 
-    debugger = DebugModule()
+    debugger = DebugFunction()
 
     import __main__
     __main__.__dict__.clear()
@@ -176,7 +190,8 @@ def main():
                               })
 
     statement = 'execfile(%r)' % mainpyfile
-    sys.settrace(debugger.trace_dispatch)
+    # sys.settrace(debugger.trace_dispatch)
+    sys.setprofile(debugger.trace_dispatch)
 
     globals = __main__.__dict__
     locals = __main__.__dict__
