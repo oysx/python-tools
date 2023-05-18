@@ -1,0 +1,12 @@
+Python2.7:
+  - pdb
+    Question: When we setup a breakpoint on some location in PDB and the program stopped there, other python threads will continue run python code which seems not affected with GIL. Why?
+    Answer: Because when PDB enter interactive mode and show the prompt (pdb) for user, it will release GIL!!! The following code from python2.7 will show it:
+      Traceback: PyEval_EvalFrameEx -> call_function -> builtin_raw_input -> PyOS_Readline -> PyEval_SaveThread -> PyThread_release_lock(interpreter_lock)
+      Code: PyOS_Readline():
+              Py_BEGIN_ALLOW_THREADS  # PyEval_SaveThread()
+                PyThread_release_lock(interpreter_lock);
+              PyOS_StdioReadline()
+              Py_END_ALLOW_THREADS    # PyEval_RestoreThread()
+                PyThread_acquire_lock(interpreter_lock, 1);
+      Tips: this 'interpreter_lock' is the GIL
