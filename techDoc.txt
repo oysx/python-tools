@@ -10,3 +10,8 @@ Python2.7:
               Py_END_ALLOW_THREADS    # PyEval_RestoreThread()
                 PyThread_acquire_lock(interpreter_lock, 1);
       Tips: this 'interpreter_lock' is the GIL
+  - stop threads and do something in python
+    There are 3 options to stop threads as quick as possible. (after any bytecode execution, so this is not safe on some edge cases)
+      1. Send signal "INTERRUPT": refer to https://vorpus.org/blog/control-c-handling-in-python-and-trio/
+      2. Stop execution via sys.settrace() on "LINE" mode
+      3. Send async exception via C-API 'PyThreadState_SetAsyncExc()'
