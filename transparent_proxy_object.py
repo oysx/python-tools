@@ -1,6 +1,31 @@
+class Propagating(object):
+    def __init__(self):
+        self.__my_propagating__ = {}
+
+    def __my_register_propagating__(self, name, func):
+        self.__my_propagating__[name] = func
+
+
+class PropagatingProperty(property):
+    def __init__(self, *args, **kwargs):
+        super(PropagatingProperty, self).__init__(*args, **kwargs)
+        fget = args[0] if args else kwargs.get('fget', None)
+        self._my_property_name = fget.__name__
+
+    def __set__(self, instance, value):
+        super(PropagatingProperty, self).__set__(instance, value)
+        table = getattr(instance, '__my_propagating__', None)
+        if not table:
+            return
+
+        cb = table.get(self._my_property_name, None)
+        if cb:
+            cb(value)
+
+
 class ProxyObject(object):
-    OBJECT_NAME = '__atlas__obj__'
-    CONSTRUCTOR_NAME = '__atlas__constructor__'
+    OBJECT_NAME = '__my__obj__'
+    CONSTRUCTOR_NAME = '__my__constructor__'
 
     def __init__(self, *args, **kwargs):
         self.args = args
@@ -77,11 +102,11 @@ class ProxyObject(object):
         # assert '__getattribute__' in proxied_magic.keys()
         assert '__setattr__' in proxied_magic.keys()
 
-        new_cls = type(object.__str__('AtlasProxy') + cls.__name__, (self.ProxyBase, *bases), proxied_magic)
+        new_cls = type(object.__str__('MyProxy') + cls.__name__, (self.ProxyBase, *bases), proxied_magic)
 
         obj = None if isinstance(obj, type) else obj
         self.new_obj = new_cls(obj, constructor=constructor)
-        subscribe = getattr(owner, '__atlas_register_propagating__', None) if owner else None
+        subscribe = getattr(owner, '__my_register_propagating__', None) if owner else None
         if subscribe:
             # subscribe(property_name, self.update)
             subscribe(property_name, object.__getattribute__(self.new_obj, '__init__'))
