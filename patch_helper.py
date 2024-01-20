@@ -676,3 +676,138 @@ def patch_target_environment(container, func, ignore=None):
                         extra_include=extra_include)
     else:
         return PatchAll(mod, ignore=[func.__name__]+ignore, extra_include=extra_include)
+
+
+class WalrusModelMocker(object):
+    auto = False
+
+    def patch_load(this):
+        @classmethod
+        def load(cls, *args, **kwargs):
+            return cls()
+        return load
+
+    def patch_query(this):
+        @classmethod
+        def query(cls, *args, **kwargs):
+            if this.auto:
+                yield cls()
+
+            return
+        return query
+
+def model_auto_gen():
+    WalrusModelMocker.auto = True
+    yield
+    WalrusModelMocker.auto = False
+
+def patch_walrus_model():
+    walrus_model = WalrusModelMocker()
+    with patch('walrus.models.Model.save'):
+        with patch('walrus.models.Model.load', new=walrus_model.patch_load()):
+            with patch('walrus.models.Model.query', new=walrus_model.patch_query()):
+                with patch('walrus.models.Model.delete'):
+                    yield
+
+def redis_simulator():
+    database = {}
+
+    def redis_execute_command(self, cmd, *args, **kwargs):
+        def INCRBY(key, value):
+            data = database.get(key, None)
+            if data is None:
+                database[key] = 0
+            database[key] += value
+            return database[key]
+
+        def HMSET(key, *args, **kwargs):
+            data = database.get(key, None)
+            if data is None:
+                database[key] = {}
+            for i in range(0, len(args), 2):
+                database[key][args[i]] = args[i+1]
+
+        def SADD(key, value):
+            data = database.get(key, None)
+            if data is None:
+                database[key] = set()
+            database[key].add(value)
+
+        def ZADD(key, *args):
+            data = database.get(key, None)
+            if data is None:
+                database[key] = set()
+            for i in range(0, len(args), 2):
+                database[key].add((args[i], args[i+1]))
+
+        def ZRANGEBYLEX(key, min, max, *args, **kwargs):
+            data = database.get(key, None)
+            if data is None:
+                return []
+
+            min_ind, min = min[0], min[1:]
+            max_ind, max = max[0], max[1:]
+            result = []
+            for score, value in data:
+                if min_ind == '-' or (min_ind == '(' and value > min) or (min_ind == '[' and value >= min):
+                    result.append(value)
+                elif max_ind == '+' or (max_ind == ')' and value < max) or (max_ind == ']' and value <= max):
+                    result.append(value)
+
+            result = sorted(result)
+            return result
+
+        def SORT(key, *args, **kwargs):
+            data = database.get(key, [])
+            token = {}
+            def _parse_args(a):
+                if not a:
+                    return
+                elif isinstance(a[0], redis.connection.Token) and (a[0].value == 'BY' or a[0].value == 'STORE'):
+                    token[a[0].value] = a[1]
+                    _parse_args(a[2:])
+                elif isinstance(a[0], redis.connection.Token) and (a[0].value == 'LIMIT'):
+                    token[a[0].value] = a[1], a[2]
+                    _parse_args(a[3:])
+                elif isinstance(a[0], redis.connection.Token) and (a[0].value == 'GET'):
+                    if not token.get('GET', None):
+                        token['GET'] = []
+                    token[a[0].value].append(a[1])
+                    _parse_args(a[2:])
+                elif isinstance(a[0], redis.connection.Token):
+                    token[a[0].value] = True
+                    _parse_args(a[1:])
+            _parse_args(args)
+            BY = token.get('BY', None)
+            if BY:
+                result = [(d, BY.replace('*', d)) for d in data]
+                sorted(result, key=lambda x: database.get(x[1], ''), reverse=True)
+                return [r[0] for r in result] if result else []
+
+        response = {
+            'ZRANGEBYLEX': ZRANGEBYLEX,
+            'EXISTS': database.get(args[0], None) is not None,
+            'SINTERSTORE': lambda dest, *args, **kwargs: database.get(),
+            'INCRBY': INCRBY,
+            'SORT': SORT,
+            'DEL': lambda key: database.pop(key, None),
+            'HMSET': HMSET,
+            'SADD': SADD,
+            'ZADD': ZADD,
+            'HGETALL': lambda key: database.get(key),
+            'SSCAN': lambda key, cursor: (0, database.get(key, [])),
+        }
+        for k, v in response.items():
+            if re.match(k, cmd):
+                return v(*args, **kwargs) if inspect.isfunction(v) else v
+
+    def redis_run_script(self, script, keys=None, args=None):
+        response = {
+            'lock_acquire': 1,
+            'lock_release': 1,
+        }
+        return response.get(script, None)
+
+    with patch("redis.client.StrictRedis.execute_command", new=redis_execute_command) as command:
+        with patch('walrus.database.Database.run_script', new=redis_run_script) as run:
+            yield
