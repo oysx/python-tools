@@ -678,23 +678,161 @@ def patch_target_environment(container, func, ignore=None):
         return PatchAll(mod, ignore=[func.__name__]+ignore, extra_include=extra_include)
 
 
+class WalrusModelHelper(object):
+    def primary_key(self, cls):
+        return cls._fields[cls._primary_key].name
+
+    def primary_value(self, obj):
+        return obj._data.get(self.primary_key(obj.__class__))
+
+    def model_key(self, obj):
+        return obj.__class__, self.primary_value(obj)
+
+    def model_value(self, obj):
+        return {k: v for k, v in obj._data.items() if k in obj._fields}
+
+class CustomizedModelMocker(WalrusModelHelper):
+    def __init__(this):
+        this.containers = {}
+        this.members = {}
+
+    def patch_add_member(this):
+        def add_member(self, member):
+            container_key = this.model_key(self)
+            container_value = this.model_value(self)
+            this.containers[container_key] = container_value
+
+            members = this.members.get(container_key, {})
+            member_key = this.model_key(member)
+            member_value = this.model_value(member)
+            members[member_key] = member_value
+            this.members[container_key] = members
+
+        return add_member
+
+    def patch_remove_member(this):
+        def remove_member(self, member):
+            container_key = this.model_key(self)
+            member_key = this.model_key(member)
+
+            members = this.components.get(container_key, {})
+            members.pop(member_key, None)
+
+        return remove_member
+
+    def patch_all_member(this):
+        def all_member(self, member_cls):
+            container_key = this.model_key(self)
+            members = this.members.get(container_key, {})
+            members = {k: v for k, v in members.items() if k[0] is member_cls}
+
+            if members:
+                for value in members.values():
+                    yield member_cls(**value)
+            else:
+                yield member_cls()
+        return all_member
+
+    def patch_lookup_by_member(this):
+        @classmethod
+        def lookup_by_member(cls, member, *args, **kwargs):
+            key = this.model_key(member)
+
+            members = {container_key: container_value
+                          for container_key, container_value in this.members.items()
+                          for member_key, member_value in container_value
+                          if container_key[0] is cls and member_key == key}
+            if members:
+                data = members.values()[0]
+                return cls(**data)
+            else:
+                return cls()
+        return lookup_by_member
+
+
 class WalrusModelMocker(object):
-    auto = False
+    auto = True
+
+    def __init__(this):
+        this.data = {}
+
+    def patch_save(this):
+        def save(self):
+            cls = self.__class__
+            saved = this.data.get(cls, set())
+            data = {k: v for k, v in self._data.items() if k in self._fields}
+            data = frozenset(data.items())
+            saved.add(data)
+            this.data[cls] = saved
+        return save
 
     def patch_load(this):
         @classmethod
-        def load(cls, *args, **kwargs):
+        def load(cls, primary_key, *args, **kwargs):
+            name = cls._fields[cls._primary_key].name
+            data = this.search_in_data(cls, name, primary_key)
+            if data:
+                data = this.data_to_dict(data[0])
+                return cls(**data)
             return cls()
         return load
 
     def patch_query(this):
         @classmethod
         def query(cls, *args, **kwargs):
-            if this.auto:
+            expr = kwargs.get("expression")
+            expr = expr if expr else args[0]
+            found = False
+            for data in this.handle_expression(cls, expr):
+                found = True
+                yield cls(**data)
+            if not found and this.auto:
                 yield cls()
 
             return
         return query
+
+    def patch_delete(this):
+        def delete(self, *args, **kwargs):
+            cls = self.__class__
+            name = cls._fields[cls._primary_key].name
+            value = self._data.get(name)
+            data = this.search_in_data(cls, name, value)
+            if data:
+                this.data[cls].remove(data[0])
+        return delete
+
+    def search_in_data(this, cls, name, value, data=None):
+        data = this.data.get(cls, set()) if data is None else data
+        data = [d for d in data for k, v in d if k == name and v == value]
+        return data
+
+    def data_to_dict(this, data):
+        return {k: v for k, v in data}
+
+    def handle_expression(this, cls, expr, source=None):
+        if not expr:
+            # all elements
+            yield from this.search_expression(cls, source=source)
+        elif expr.op == '==':
+            field, value = (expr.lhs, expr.rhs) if isinstance(expr.lhs, walrus.Field) else (expr.rhs, expr.lhs)
+            assert cls is field.model_class
+            def filter(data):
+                return this.search_in_data(cls, field.name, value, data=data)
+            yield from this.search_expression(cls, filter, source=source)
+        elif expr.op == 'and':
+            assert isinstance(expr.lhs, walrus.query.Expression) and isinstance(expr.rhs, walrus.query.Expression)
+            rhs = [frozenset(d.items()) for d in this.handle_expression(cls, expr.rhs)]
+            lhs = [d for d in this.handle_expression(cls, expr.lhs, source=rhs)]
+            for d in lhs:
+                yield d
+
+    def search_expression(this, cls, filter=None, source=None):
+        filter = filter if filter else lambda x: this.data.get(cls, set()) if x is None else x
+        data = filter(source)
+        for d in data:
+            yield this.data_to_dict(d)
+
 
 def model_auto_gen():
     WalrusModelMocker.auto = True
@@ -703,13 +841,13 @@ def model_auto_gen():
 
 def patch_walrus_model():
     walrus_model = WalrusModelMocker()
-    with patch('walrus.models.Model.save'):
+    with patch('walrus.models.Model.save', new=walrus_model.patch_save()):
         with patch('walrus.models.Model.load', new=walrus_model.patch_load()):
             with patch('walrus.models.Model.query', new=walrus_model.patch_query()):
-                with patch('walrus.models.Model.delete'):
+                with patch('walrus.models.Model.delete', new=walrus_model.patch_delete()):
                     yield
 
-def redis_simulator():
+def simulator_redis():
     database = {}
 
     def redis_execute_command(self, cmd, *args, **kwargs):
@@ -733,12 +871,35 @@ def redis_simulator():
                 database[key] = set()
             database[key].add(value)
 
+        def SREM(key, value, *args, **kwargs):
+            data = database.get(key, set())
+            count = 0
+            for d in (value,) + args:
+                if d not in data:
+                    continue
+                count += 1
+                data.remove(d)
+
+            return count
+
+        def SCARD(key):
+            data = database.get(key, set())
+            return len(data)
+
         def ZADD(key, *args):
             data = database.get(key, None)
             if data is None:
                 database[key] = set()
             for i in range(0, len(args), 2):
                 database[key].add((args[i], args[i+1]))
+
+        def SINTERSTORE(dest, key, *args, **kwargs):
+            sets = [database.get(k, set()) for k in args]
+            result = database.get(key, set())
+            for s in sets:
+                result.intersection_update(s)
+
+            database[dest] = result
 
         def ZRANGEBYLEX(key, min, max, *args, **kwargs):
             data = database.get(key, None)
@@ -750,9 +911,8 @@ def redis_simulator():
             result = []
             for score, value in data:
                 if min_ind == '-' or (min_ind == '(' and value > min) or (min_ind == '[' and value >= min):
-                    result.append(value)
-                elif max_ind == '+' or (max_ind == ')' and value < max) or (max_ind == ']' and value <= max):
-                    result.append(value)
+                    if max_ind == '+' or (max_ind == '(' and value < max) or (max_ind == '[' and value <= max):
+                        result.append(value)
 
             result = sorted(result)
             return result
@@ -787,12 +947,14 @@ def redis_simulator():
         response = {
             'ZRANGEBYLEX': ZRANGEBYLEX,
             'EXISTS': database.get(args[0], None) is not None,
-            'SINTERSTORE': lambda dest, *args, **kwargs: database.get(),
+            'SINTERSTORE': SINTERSTORE,
             'INCRBY': INCRBY,
             'SORT': SORT,
             'DEL': lambda key: database.pop(key, None),
             'HMSET': HMSET,
             'SADD': SADD,
+            'SREM': SREM,
+            'SCARD': SCARD,
             'ZADD': ZADD,
             'HGETALL': lambda key: database.get(key),
             'SSCAN': lambda key, cursor: (0, database.get(key, [])),
@@ -800,14 +962,24 @@ def redis_simulator():
         for k, v in response.items():
             if re.match(k, cmd):
                 return v(*args, **kwargs) if inspect.isfunction(v) else v
+        else:
+            raise NotImplemented("Command '{}' not implemented".format(cmd))
 
     def redis_run_script(self, script, keys=None, args=None):
         response = {
             'lock_acquire': 1,
             'lock_release': 1,
         }
-        return response.get(script, None)
+        result = response.get(script, None)
+        if result is None:
+            raise NotImplemented("Script '{}' not implemented".format(script))
+        return result
 
     with patch("redis.client.StrictRedis.execute_command", new=redis_execute_command) as command:
         with patch('walrus.database.Database.run_script', new=redis_run_script) as run:
             yield
+
+
+simulator_redis_on_demand = pytest.fixture()(simulator_redis)
+simulator_redis_auto_use = pytest.fixture(autouse=True)(simulator_redis)
+
