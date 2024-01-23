@@ -715,7 +715,7 @@ class CustomizedModelMocker(WalrusModelHelper):
             container_key = this.model_key(self)
             member_key = this.model_key(member)
 
-            members = this.components.get(container_key, {})
+            members = this.members.get(container_key, {})
             members.pop(member_key, None)
 
         return remove_member
